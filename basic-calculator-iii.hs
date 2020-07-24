@@ -1,14 +1,11 @@
 module Main where
 
-import Text.Parsec.Prim (Parsec, parseTest)
-import Text.Parsec.Char (spaces, digit, char)
-import Text.Parsec.Combinator (many1, choice)
+import Text.Parsec.Prim (Parsec, parseTest, (<|>))
+import Text.Parsec.Char (spaces, char, digit)
+import Text.Parsec.Combinator (many1, chainl1)
 import Control.Monad ((>>))
 
 type Parser a = Parsec String () a
-
-decimal :: Parser Integer
-decimal = token $ read <$> (many1 digit)
 
 token :: Parser a -> Parser a
 token p = do spaces
@@ -16,61 +13,36 @@ token p = do spaces
              spaces
              return x
 
+decimal :: Parser Integer
+decimal = token $ read <$> (many1 digit)
+
 symbol :: Char -> Parser Char
 symbol c = token $ char c
 
-linop :: Parser (Integer -> Integer -> Integer)
-linop = choice [
-          symbol '+' >> return (+),
-          symbol '-' >> return (-)
-       ]
+parens :: Parser a -> Parser a
+parens p = do symbol '('
+              x <- p
+              symbol ')'
+              return x
 
-nonlinop :: Parser (Integer -> Integer -> Integer)
-nonlinop = choice [
-          symbol '*' >> return (*),
-          symbol '/' >> return div 
-       ]
-
-{-
-  grammar:
-
-  expr ::= expr + term |
-           expr - term |
-           term
-
-  term ::= term * factor |
-           term / factor |
-           factor
-
-  factor ::= ( expr ) | decimal
--}
-
+-- references: https://stackoverflow.com/questions/50261752/parsing-expressions-inside-arithmetic-expressions
+--             https://hackage.haskell.org/package/parsec-3.1.14.0/docs/Text-Parsec.html
 expr :: Parser Integer
-expr = choice [
-         do lhs <- expr
-            op <- linop
-            rhs <- term
-            return $ op lhs rhs,
-         term
-       ]
+expr = term `chainl1` linop
 
 term :: Parser Integer
-term = choice [
-         do lhs <- term
-            op <- nonlinop
-            rhs <- factor 
-            return $ op lhs rhs,
-         factor
-       ]
+term = factor `chainl1` nonlinop
 
 factor :: Parser Integer
-factor = choice [
-           do symbol '('
-              e <- expr
-              symbol ')'
-              return e,
-           decimal
-         ]
+factor = parens expr <|> decimal
+
+linop :: Parser (Integer -> Integer -> Integer)
+linop = (symbol '+' >> return (+)) <|> (symbol '-' >> return (-))
+
+nonlinop :: Parser (Integer -> Integer -> Integer)
+nonlinop = (symbol '*' >> return (*)) <|> (symbol '/' >> return div)
+
 
 main :: IO ()
-main = parseTest expr "1*2"
+main = parseTest expr "1 - 2 * 3" >>
+       parseTest expr "(1 + 2) * 3"
