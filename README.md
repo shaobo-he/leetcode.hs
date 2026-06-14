@@ -1,18 +1,19 @@
 # leetcode.hs
 
-> Selected LeetCode problems, each solved three ways — in **Racket**, **Haskell**, and **Idris 2**.
+> Selected LeetCode problems, each solved four ways — in **Racket**, **Haskell**, **Idris 2**, and **Lean 4**.
 >
 > *Functional programming fan gotta get a job!*
 
 [![CI](https://github.com/shaobo-he/leetcode.hs/actions/workflows/ci.yml/badge.svg)](https://github.com/shaobo-he/leetcode.hs/actions/workflows/ci.yml)
 
-Every problem lives in its own folder with all three implementations:
+Every problem lives in its own folder with all four implementations:
 
 ```
 two-sum/
   solution.rkt   — Racket (typed where useful), with rackunit tests
   solution.hs    — Haskell (GHC), with a runnable main
   solution.idr   — Idris 2, type-checked (and runnable)
+  solution.lean  — Lean 4, with #guard self-tests (and proofs, where ported)
 ```
 
 ## Running & testing
@@ -22,10 +23,12 @@ two-sum/
 | Racket  | `racket two-sum/solution.rkt`               | `raco test $(find . -name '*.rkt')` |
 | Haskell | `runghc two-sum/solution.hs`                | loop `runghc` over every `*.hs` |
 | Idris 2 | `idris2 two-sum/solution.idr --exec main`   | `idris2 --check` over every `*.idr` |
+| Lean 4  | `lean two-sum/solution.lean`                | `lean` over every `*.lean` |
 
-Racket solutions carry their tests in a `(module+ test …)` submodule (89 `rackunit`
+Racket solutions carry their tests in a `(module+ test …)` submodule (91 `rackunit`
 checks in all); Haskell and Idris solutions each have a `main` demonstrating worked
-examples. CI runs all three toolchains on every push.
+examples; Lean solutions self-test with `#guard` (a failing guard is a compile error).
+CI runs all four toolchains on every push.
 
 The only dependency outside the standard libraries is Haskell's `logict` (the `Logic`
 monad in N-Queens); everything else uses each toolchain's bundled libraries.
@@ -64,9 +67,10 @@ monad in N-Queens); everything else uses each toolchain's bundled libraries.
 
 A few solutions lean into what each language does best:
 
-- **Brzozowski derivatives** — `regular-expression-matching` matches by differentiating the regex one character at a time, in all three languages.
+- **Brzozowski derivatives** — `regular-expression-matching` matches by differentiating the regex one character at a time, in all four languages.
 - **Dependent types** — `merge-sorted-array.idr` returns a `Vect (m + n)`, carrying a proof that merging an `m`-vector and an `n`-vector yields exactly `m + n` elements.
 - **Machine-checked proofs** — `generate-parenthesis.idr` proves (totally, in Idris 2) that its output is *exactly* the balanced strings: soundness (`generateSound : All (Bal 0) …`) and completeness (`generateComplete : Bal 0 xs → … Elem …`). `valid-parentheses.idr` proves its recognizer accepts exactly the `Bal 0` strings. Both model a parenthesis as a two-constructor `Paren` type so Idris's coverage checker can verify the proofs are total (a primitive `Char` index can't be case-split).
+- **The same proofs in two provers** — the key Idris theorems are also proven in **Lean 4**, idiomatically (tactic mode: `induction`/`simp`/`omega`/functional induction), not transliterated. `valid-parentheses.lean` proves `check_iff_bal : check d cs = true ↔ Bal d cs` (the recognizer accepts exactly the balanced strings); `generate-parenthesis.lean` proves `genB_sound` + `genB_complete` (the output is exactly the balanced strings); `merge-sorted-array.lean` proves `sortedMerge_length` (the length guarantee Idris puts in the `Vect (m+n)` type, here as a theorem).
 - **A verified optimisation** — `length-of-longest-substring-k-distinct.idr` carries a brute-force reference with a *full* correctness proof: `optimal` (no substring with ≤ k distinct chars is longer than the answer) and `achievable` (the answer is realised by an actual valid substring), via an inductive "contiguous substring" relation and enumeration sound/completeness lemmas. It also reasons about the **sliding window itself**: `windowRealized` shows the answer is always the length of a genuine contiguous substring (the window stays positioned in the string as it advances), and `windowSound : lenKDistinctV s k ≤ solve k (unpack s)` proves a sliding window never overestimates the true maximum — every window is a *valid* substring by construction (shrink keeps dropping from the left until ≤ k distinct chars). The matching lower bound's core, `shrinkVLongest` (shrink returns the *longest* valid suffix, so no better window is missed), is proven too; threading it to full optimality (`= solve`) is left as documented future work. The counts-based window is the fast runnable solution.
 - **The Logic monad** — `n-queens.hs` does backtracking with `Control.Monad.Logic`; the Racket and Idris ports get the same answers by filtering permutations.
 - **Escape continuations** — `valid-parentheses.rkt` parses with `let/cc`, bailing out the moment it sees a mismatch.
