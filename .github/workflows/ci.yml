@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  racket:
+    name: Racket (raco test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Bogdanp/setup-racket@v1.11
+        with:
+          version: stable
+          variant: CS
+          distribution: full
+      - name: raco test all solutions
+        run: raco test $(find . -name '*.rkt' | sort)
+
+  haskell:
+    name: Haskell (runghc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell-actions/setup@v2
+        with:
+          ghc-version: '9.6.6'
+      - name: Install logict and expose bundled libraries
+        run: |
+          cabal update
+          cabal install --lib logict parsec mtl array containers \
+            --constraint 'parsec installed'     \
+            --constraint 'mtl installed'        \
+            --constraint 'array installed'      \
+            --constraint 'containers installed'
+      - name: Run every Haskell solution
+        run: |
+          status=0
+          for f in $(find . -name '*.hs' | sort); do
+            echo "== $f =="
+            runghc "$f" || status=1
+          done
+          exit $status
+
+  idris2:
+    name: Idris 2 (--check)
+    runs-on: ubuntu-latest
+    container: ghcr.io/stefan-hoeck/idris2-pack:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: idris2 --check every solution
+        run: |
+          status=0
+          for f in $(find . -name '*.idr' | sort); do
+            echo "== $f =="
+            idris2 --check "$f" || status=1
+          done
+          exit $status

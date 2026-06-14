@@ -1,4 +1,9 @@
 *.bak
 *.ibc
 *.o
+*.hi
 compiled
+# Idris 2 build artifacts
+build/
+*.ttc
+*.ttm
