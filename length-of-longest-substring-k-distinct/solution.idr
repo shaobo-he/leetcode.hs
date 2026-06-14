@@ -6,7 +6,14 @@ import Data.Nat        -- LTE
 
 ------------------------------------------------------------------------
 -- Fast solution: sliding window holding at most k distinct chars.
+-- Helpers are top-level (not in a `where`) so we can reason about them below.
 ------------------------------------------------------------------------
+
+-- structural max with clean reduction (the stdlib max is comparison-based)
+maxN : Nat -> Nat -> Nat
+maxN Z     b     = b
+maxN a     Z     = a
+maxN (S a) (S b) = S (maxN a b)
 
 incr : Eq a => a -> List (a, Nat) -> List (a, Nat)
 incr x [] = [(x, 1)]
@@ -21,21 +28,22 @@ decr x ((y, n) :: rest) =
             _       => rest)
     else (y, n) :: decr x rest
 
+shrinkW : Nat -> List Char -> List (Char, Nat) -> (List Char, List (Char, Nat))
+shrinkW k win counts =
+  if length counts > k
+    then (case win of
+            (d :: ds) => shrinkW k ds (decr d counts)
+            []        => (win, counts))
+    else (win, counts)
+
+goW : Nat -> List Char -> List (Char, Nat) -> Nat -> List Char -> Nat
+goW _ _ _ best [] = best
+goW k win counts best (c :: cs) =
+  let (win2, counts2) = shrinkW k (win ++ [c]) (incr c counts)
+  in goW k win2 counts2 (maxN best (length win2)) cs
+
 lenKDistinct : String -> Nat -> Nat
-lenKDistinct s k = go [] [] 0 (unpack s)
-  where
-    shrink : List Char -> List (Char, Nat) -> (List Char, List (Char, Nat))
-    shrink win counts =
-      if length counts > k
-        then (case win of
-                (d :: ds) => shrink ds (decr d counts)
-                []        => (win, counts))
-        else (win, counts)
-    go : List Char -> List (Char, Nat) -> Nat -> List Char -> Nat
-    go _ _ best [] = best
-    go win counts best (c :: cs) =
-      let (win2, counts2) = shrink (win ++ [c]) (incr c counts)
-      in go win2 counts2 (max best (length win2)) cs
+lenKDistinct s k = goW k [] [] 0 (unpack s)
 
 ------------------------------------------------------------------------
 -- Verified brute-force reference with a full correctness proof:
@@ -43,12 +51,6 @@ lenKDistinct s k = go [] [] 0 (unpack s)
 --   achievable  : the answer is realised by an actual valid substring
 -- (The fast sliding window above is tested to agree with it.)
 ------------------------------------------------------------------------
-
--- structural max with clean reduction (the stdlib max is comparison-based)
-maxN : Nat -> Nat -> Nat
-maxN Z     b     = b
-maxN a     Z     = a
-maxN (S a) (S b) = S (maxN a b)
 
 lteRefl : {n : Nat} -> LTE n n
 lteRefl {n = Z}   = LTEZero
@@ -216,6 +218,72 @@ achievable k s = case listMaxElem (map length (filter (validK k) (substrs s))) o
     let (sub ** (eInFilter, lenEq)) = mapElemInv length (filter (validK k) (substrs s)) e
         (eInSubstrs, vprf)          = filterElemInv (validK k) (substrs s) eInFilter
     in (sub ** (substrSound s eInSubstrs, vprf, lenEq))
+
+------------------------------------------------------------------------
+-- A property of the ACTUAL sliding window: its answer is always the length
+-- of a genuine contiguous substring of the input (never a fabricated number).
+-- (Full correctness `= solve` additionally needs the counts-invariant, which
+-- runs into primitive Char equality, and the left-pointer optimality argument.)
+------------------------------------------------------------------------
+
+prefixOfApp : (xs : List a) -> (ys : List a) -> Pre xs (xs ++ ys)
+prefixOfApp []        ys = PreNil
+prefixOfApp (x :: xs) ys = PreCons (prefixOfApp xs ys)
+
+substrFromSplit : (before, mid, after, full : List Char) ->
+                  before ++ mid ++ after = full -> Substr mid full
+substrFromSplit []        mid after full eq = rewrite sym eq in IsPre (prefixOfApp mid after)
+substrFromSplit (b :: bs) mid after full eq =
+  rewrite sym eq in Skip (substrFromSplit bs mid after (bs ++ mid ++ after) Refl)
+
+-- shrink only drops characters from the LEFT, so the window stays a suffix
+shrinkSuffix : (k : Nat) -> (win : List Char) -> (counts : List (Char, Nat)) ->
+               (win2 : List Char) -> (counts2 : List (Char, Nat)) ->
+               shrinkW k win counts = (win2, counts2) ->
+               (pre : List Char ** win = pre ++ win2)
+shrinkSuffix k win counts win2 counts2 eq with (length counts > k)
+  shrinkSuffix k []        counts win2 counts2 eq | True  = ([] ** cong fst eq)
+  shrinkSuffix k (d :: ds) counts win2 counts2 eq | True  =
+    let (pre' ** ih) = shrinkSuffix k ds (decr d counts) win2 counts2 eq
+    in (d :: pre' ** cong (d ::) ih)
+  shrinkSuffix k win       counts win2 counts2 eq | False = ([] ** cong fst eq)
+
+-- the window stays positioned inside the input as it advances
+splitStep : (before, win, pre, win2, cs : List Char) -> (c : Char) -> (full : List Char) ->
+            before ++ win ++ (c :: cs) = full ->
+            win ++ [c] = pre ++ win2 ->
+            (before ++ pre) ++ win2 ++ cs = full
+splitStep before win pre win2 cs c full split winEq =
+  rewrite sym (appendAssociative before pre (win2 ++ cs)) in
+  rewrite appendAssociative pre win2 cs in
+  rewrite sym winEq in
+  rewrite sym (appendAssociative win [c] cs) in
+  split
+
+goRealized : (k : Nat) -> (full : List Char) ->
+             (win : List Char) -> (counts : List (Char, Nat)) -> (best : Nat) ->
+             (remaining : List Char) ->
+             (before : List Char ** before ++ win ++ remaining = full) ->
+             (bsub : List Char ** (Substr bsub full, length bsub = best)) ->
+             (sub : List Char ** (Substr sub full, length sub = goW k win counts best remaining))
+goRealized k full win counts best []        inv1 inv2 = inv2
+goRealized k full win counts best (c :: cs) inv1 inv2
+   with (shrinkW k (win ++ [c]) (incr c counts)) proof eqs
+  _ | (win2, counts2) =
+    let (before ** split) = inv1
+        (pre ** winEq)     = shrinkSuffix k (win ++ [c]) (incr c counts) win2 counts2 eqs
+        split2             = splitStep before win pre win2 cs c full split winEq
+        win2sub            = substrFromSplit (before ++ pre) win2 cs full split2
+        inv2' = case maxNElim best (length win2) of
+                  Left  p => let (bs ** (ss, le)) = inv2 in (bs ** (ss, trans le (sym p)))
+                  Right p => (win2 ** (win2sub, sym p))
+    in goRealized k full win2 counts2 (maxN best (length win2)) cs
+                  (before ++ pre ** split2) inv2'
+
+windowRealized : (s : String) -> (k : Nat) ->
+                 (sub : List Char ** (Substr sub (unpack s), length sub = lenKDistinct s k))
+windowRealized s k =
+  goRealized k (unpack s) [] [] 0 (unpack s) ([] ** Refl) ([] ** (IsPre PreNil, Refl))
 
 main : IO ()
 main = do
