@@ -1,8 +1,9 @@
 module Main
 
-import Data.List       -- nub
+import Data.List       -- appendAssociative
 import Data.List.Elem
 import Data.Nat        -- LTE
+import Decidable.Equality  -- decEq, for a constructively-reasoned distinct count
 
 ------------------------------------------------------------------------
 -- Fast solution: sliding window holding at most k distinct chars.
@@ -129,8 +130,20 @@ listMaxUB : {n : Nat} -> (ns : List Nat) -> Elem n ns -> LTE n (listMax ns)
 listMaxUB (m :: ms) Here      = lteMaxL m (listMax ms)
 listMaxUB (m :: ms) (There e) = lteTrans (listMaxUB ms e) (lteMaxR m (listMax ms))
 
+-- distinct-character count via decidable equality (so we can reason about it,
+-- unlike the Eq-based `nub`: `==` doesn't reflect propositional equality)
+decElem : DecEq a => a -> List a -> Bool
+decElem x [] = False
+decElem x (y :: ys) = case decEq x y of
+                        Yes _ => True
+                        No  _ => decElem x ys
+
+numDistinct : DecEq a => List a -> Nat
+numDistinct []        = 0
+numDistinct (x :: xs) = if decElem x xs then numDistinct xs else S (numDistinct xs)
+
 distinct : List Char -> Nat
-distinct = length . nub
+distinct = numDistinct
 
 -- structural <= so that `validK k []` reduces definitionally to True
 leNat : Nat -> Nat -> Bool
@@ -285,12 +298,124 @@ windowRealized : (s : String) -> (k : Nat) ->
 windowRealized s k =
   goRealized k (unpack s) [] [] 0 (unpack s) ([] ** Refl) ([] ** (IsPre PreNil, Refl))
 
+------------------------------------------------------------------------
+-- SOUNDNESS of a sliding window vs the verified spec: the window's answer
+-- never exceeds the true maximum.  We verify a window whose validity is
+-- structural -- shrink keeps looping until the window has <= k distinct chars
+-- -- so every window is a valid substring by construction (this sidesteps the
+-- counts-multiset invariant; the counts version above is the faster variant).
+------------------------------------------------------------------------
+
+-- small Nat/Bool bridges (keeping everything structurally reducing)
+gtNat : Nat -> Nat -> Bool
+gtNat a b = not (leNat a b)
+
+notFalseTrue : (b : Bool) -> not b = False -> b = True
+notFalseTrue True  _   = Refl
+notFalseTrue False prf = absurd prf
+
+leNatToLte : (a, b : Nat) -> leNat a b = True -> LTE a b
+leNatToLte Z     b     _   = LTEZero
+leNatToLte (S a) Z     prf = absurd prf
+leNatToLte (S a) (S b) prf = LTESucc (leNatToLte a b prf)
+
+lteToLeNat : LTE a b -> leNat a b = True
+lteToLeNat LTEZero     = Refl
+lteToLeNat (LTESucc p) = lteToLeNat p
+
+maxNLUB : (a, b, n : Nat) -> LTE a n -> LTE b n -> LTE (maxN a b) n
+maxNLUB Z     b     n     pa          pb          = pb
+maxNLUB (S a) Z     n     pa          pb          = pa
+maxNLUB (S a) (S b) (S n) (LTESucc pa) (LTESucc pb) = LTESucc (maxNLUB a b n pa pb)
+
+-- shrink from the left until the window has at most k distinct characters
+shrinkV : Nat -> List Char -> List Char
+shrinkV k win = if gtNat (distinct win) k
+                  then (case win of
+                          (_ :: ds) => shrinkV k ds
+                          []        => win)
+                  else win
+
+goV : Nat -> Nat -> List Char -> List Char -> Nat
+goV k best win []        = best
+goV k best win (c :: cs) =
+  goV k (maxN best (length (shrinkV k (win ++ [c])))) (shrinkV k (win ++ [c])) cs
+
+lenKDistinctV : String -> Nat -> Nat
+lenKDistinctV s k = goV k 0 [] (unpack s)
+
+-- shrinkV only drops from the left, so the window stays a suffix
+shrinkVSuffix : (k : Nat) -> (win : List Char) -> (pre : List Char ** win = pre ++ shrinkV k win)
+shrinkVSuffix k win with (gtNat (distinct win) k)
+  shrinkVSuffix k []        | True  = ([] ** Refl)
+  shrinkVSuffix k (d :: ds) | True  =
+    let (pre' ** ih) = shrinkVSuffix k ds in (d :: pre' ** cong (d ::) ih)
+  shrinkVSuffix k win       | False = ([] ** Refl)
+
+-- and the window it returns always has at most k distinct characters
+shrinkVValid : (k : Nat) -> (win : List Char) -> LTE (distinct (shrinkV k win)) k
+shrinkVValid k win with (gtNat (distinct win) k) proof eq
+  shrinkVValid k []        | True  = LTEZero
+  shrinkVValid k (d :: ds) | True  = shrinkVValid k ds
+  shrinkVValid k win       | False = leNatToLte (distinct win) k (notFalseTrue _ eq)
+
+goVSound : (k : Nat) -> (full : List Char) -> (best : Nat) ->
+           (win : List Char) -> (remaining : List Char) ->
+           (before : List Char ** before ++ win ++ remaining = full) ->
+           LTE best (solve k full) ->
+           LTE (goV k best win remaining) (solve k full)
+goVSound k full best win []        inv hb = hb
+goVSound k full best win (c :: cs) inv hb =
+  let (before ** split) = inv
+      (pre ** winEq)    = shrinkVSuffix k (win ++ [c])
+      split2            = splitStep before win pre (shrinkV k (win ++ [c])) cs c full split winEq
+      win2sub           = substrFromSplit (before ++ pre) (shrinkV k (win ++ [c])) cs full split2
+      win2valid         = lteToLeNat (shrinkVValid k (win ++ [c]))
+      lenLe             = optimal k full (shrinkV k (win ++ [c])) win2sub win2valid
+      hb'               = maxNLUB best (length (shrinkV k (win ++ [c]))) (solve k full) hb lenLe
+  in goVSound k full (maxN best (length (shrinkV k (win ++ [c])))) (shrinkV k (win ++ [c])) cs
+              (before ++ pre ** split2) hb'
+
+-- the sliding window never reports a length bigger than the true maximum
+windowSound : (s : String) -> (k : Nat) -> LTE (lenKDistinctV s k) (solve k (unpack s))
+windowSound s k = goVSound k (unpack s) 0 [] (unpack s) ([] ** Refl) LTEZero
+
+------------------------------------------------------------------------
+-- Towards OPTIMALITY (the answer is also >= the true maximum).  The heart of
+-- it: shrinkV returns the LONGEST valid suffix of its window -- no valid suffix
+-- is longer.  This is exactly why the window never misses a better answer.
+------------------------------------------------------------------------
+
+data Suffix : List a -> List a -> Type where
+  SuffNil  : Suffix w w
+  SuffCons : Suffix sf w -> Suffix sf (x :: w)
+
+suffixLength : {sf, w : List a} -> Suffix sf w -> LTE (length sf) (length w)
+suffixLength SuffNil      = lteRefl
+suffixLength (SuffCons p) = lteSuccRight (suffixLength p)
+
+notTrueFalse : (b : Bool) -> not b = True -> b = False
+notTrueFalse True  prf = absurd prf
+notTrueFalse False _   = Refl
+
+shrinkVLongest : (k : Nat) -> (w : List Char) -> (sf : List Char) ->
+                 Suffix sf w -> validK k sf = True ->
+                 LTE (length sf) (length (shrinkV k w))
+shrinkVLongest k w sf suf valid with (gtNat (distinct w) k) proof eq
+  shrinkVLongest k w         sf        suf          valid | False = suffixLength suf
+  shrinkVLongest k []        []        SuffNil      valid | True  = absurd eq
+  shrinkVLongest k (d :: ds) (d :: ds) SuffNil      valid | True  =
+    absurd (trans (sym (notTrueFalse _ eq)) valid)
+  shrinkVLongest k (d :: ds) sf        (SuffCons p) valid | True  =
+    shrinkVLongest k ds sf p valid
+
 main : IO ()
 main = do
   printLn (lenKDistinct "eceba" 2)    -- 3  (fast sliding window)
   printLn (lenKDistinct "aa" 1)       -- 2
   printLn (lenKDistinct "abee" 1)     -- 2
-  -- verified brute-force agrees:
-  printLn (solve 2 (unpack "eceba"))  -- 3
-  printLn (solve 1 (unpack "aa"))     -- 2
-  printLn (solve 1 (unpack "abee"))   -- 2
+  -- verified brute-force and the provably-sound window agree:
+  printLn (solve 2 (unpack "eceba"))    -- 3
+  printLn (lenKDistinctV "eceba" 2)     -- 3
+  printLn (solve 1 (unpack "abee"))     -- 2
+  printLn (lenKDistinctV "abee" 1)      -- 2
