@@ -66,5 +66,6 @@ A few solutions lean into what each language does best:
 
 - **Brzozowski derivatives** — `regular-expression-matching` matches by differentiating the regex one character at a time, in all three languages.
 - **Dependent types** — `merge-sorted-array.idr` returns a `Vect (m + n)`, carrying a proof that merging an `m`-vector and an `n`-vector yields exactly `m + n` elements.
+- **Machine-checked proofs** — `generate-parenthesis.idr` proves (totally, in Idris 2) that its output is *exactly* the balanced strings: soundness (`generateSound : All (Bal 0) …`) and completeness (`generateComplete : Bal 0 xs → … Elem …`). `valid-parentheses.idr` proves its recognizer accepts exactly the `Bal 0` strings. Both model a parenthesis as a two-constructor `Paren` type so Idris's coverage checker can verify the proofs are total (a primitive `Char` index can't be case-split).
 - **The Logic monad** — `n-queens.hs` does backtracking with `Control.Monad.Logic`; the Racket and Idris ports get the same answers by filtering permutations.
 - **Escape continuations** — `valid-parentheses.rkt` parses with `let/cc`, bailing out the moment it sees a mismatch.

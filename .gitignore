@@ -7,3 +7,5 @@ compiled
 build/
 *.ttc
 *.ttm
+# Local Claude Code settings
+.claude/settings.local.json
