@@ -1,12 +1,12 @@
 # leetcode.hs
 
-> Selected LeetCode problems, each solved four ways — in **Racket**, **Haskell**, **Idris 2**, and **Lean 4**.
+> Selected LeetCode problems, each solved five ways — in **Racket**, **Haskell**, **Idris 2**, **Lean 4**, and **Agda**.
 >
 > *Functional programming fan gotta get a job!*
 
 [![CI](https://github.com/shaobo-he/leetcode.hs/actions/workflows/ci.yml/badge.svg)](https://github.com/shaobo-he/leetcode.hs/actions/workflows/ci.yml)
 
-Every problem lives in its own folder with all four implementations:
+Every problem lives in its own folder with all five implementations:
 
 ```
 two-sum/
@@ -14,6 +14,7 @@ two-sum/
   solution.hs    — Haskell (GHC), with a runnable main
   solution.idr   — Idris 2, type-checked (and runnable)
   solution.lean  — Lean 4, with #guard self-tests (and proofs, where ported)
+  solution.agda  — Agda, with compile-time refl tests (and proofs, where ported)
 ```
 
 ## Running & testing
@@ -24,11 +25,13 @@ two-sum/
 | Haskell | `runghc two-sum/solution.hs`                | loop `runghc` over every `*.hs` |
 | Idris 2 | `idris2 two-sum/solution.idr --exec main`   | `idris2 --check` over every `*.idr` |
 | Lean 4  | `lean two-sum/solution.lean`                | `lean` over every `*.lean` |
+| Agda    | `agda -i two-sum two-sum/solution.agda`     | `agda -i <dir>` over every `solution.agda` |
 
 Racket solutions carry their tests in a `(module+ test …)` submodule (91 `rackunit`
 checks in all); Haskell and Idris solutions each have a `main` demonstrating worked
-examples; Lean solutions self-test with `#guard` (a failing guard is a compile error).
-CI runs all four toolchains on every push.
+examples; Lean solutions self-test with `#guard`, and Agda solutions with compile-time
+`refl` assertions (a wrong computation fails to type-check). CI runs all five toolchains
+on every push.
 
 The only dependency outside the standard libraries is Haskell's `logict` (the `Logic`
 monad in N-Queens); everything else uses each toolchain's bundled libraries.

@@ -7,5 +7,8 @@ compiled
 build/
 *.ttc
 *.ttm
+# Agda build artifacts
+*.agdai
+_build/
 # Local Claude Code settings
 .claude/settings.local.json
