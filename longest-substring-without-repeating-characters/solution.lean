@@ -1,17 +1,22 @@
 -- Longest substring without repeating characters.
--- Sliding window: track the last-seen index per character in an assoc list;
+-- Sliding window: track the last-seen index per character in a hash map
+-- (`Std.HashMap`, O(1) expected lookup/insert — the genuine O(n) algorithm,
+-- matching the Haskell version's `Data.Map`, not the O(n·σ) assoc list);
 -- when a repeat is seen, jump the window start past its previous position.
+import Std.Data.HashMap
+open Std
 
--- last-seen index per char as an assoc list
-def setIdx (c : Char) (i : Nat) : List (Char × Nat) → List (Char × Nat)
-  | []             => [(c, i)]
-  | (d, j) :: rest => if c == d then (c, i) :: rest else (d, j) :: setIdx c i rest
+-- Last-seen index per char, in a real hash map.  `setIdx`/`lookupIdx` are thin
+-- wrappers so the entire optimality proof below — which reaches the store only
+-- through these two names plus the `lookupIdx_setIdx` functional-update law — is
+-- reused verbatim; only that one law is re-proven, from the HashMap library.
+abbrev Store := HashMap Char Nat
 
-def lookupIdx (c : Char) : List (Char × Nat) → Option Nat
-  | []             => none
-  | (d, j) :: rest => if c == d then some j else lookupIdx c rest
+def setIdx (c : Char) (i : Nat) (m : Store) : Store := m.insert c i
 
-def goFast (i start : Nat) (seen : List (Char × Nat)) (best : Nat) : List Char → Nat
+def lookupIdx (c : Char) (m : Store) : Option Nat := m[c]?
+
+def goFast (i start : Nat) (seen : Store) (best : Nat) : List Char → Nat
   | []      => best
   | c :: cs =>
     let start' := match lookupIdx c seen with
@@ -19,7 +24,7 @@ def goFast (i start : Nat) (seen : List (Char × Nat)) (best : Nat) : List Char 
                   | none   => start
     goFast (i + 1) start' (setIdx c i seen) (max best ((i + 1) - start')) cs
 
-def lengthOfLongest (s : String) : Nat := goFast 0 0 [] 0 s.toList
+def lengthOfLongest (s : String) : Nat := goFast 0 0 ∅ 0 s.toList
 
 #guard lengthOfLongest "abcabcbb" == 3
 #guard lengthOfLongest "bbbbb" == 1
@@ -287,25 +292,16 @@ def lastIdx (c : Char) : List Char → Option Nat
                | some j => some (j + 1)
                | none   => if c == x then some 0 else none
 
--- setIdx then lookupIdx behaves like a functional update
-theorem lookupIdx_setIdx (c d : Char) (i : Nat) (seen : List (Char × Nat)) :
+-- setIdx then lookupIdx behaves like a functional update — now discharged from
+-- the HashMap library's own `getElem?_insert` instead of by list induction.
+theorem lookupIdx_setIdx (c d : Char) (i : Nat) (seen : Store) :
     lookupIdx d (setIdx c i seen) = if d == c then some i else lookupIdx d seen := by
-  induction seen with
-  | nil => cases h : d == c <;> simp [setIdx, lookupIdx, h]
-  | cons p rest ih =>
-      obtain ⟨e, j⟩ := p
-      cases hce : c == e
-      · simp only [setIdx, hce, lookupIdx, ih, Bool.false_eq_true, if_false]
-        cases hde : d == e
-        · simp [hde]
-        · have hdc : (d == c) = false := by
-            cases h : d == c
-            · rfl
-            · have hd : d = c := beq_iff_eq.mp h
-              rw [hd] at hde; simp_all
-          simp [hde, hdc]
-      · have hee : (d == e) = (d == c) := by rw [beq_iff_eq.mp hce]
-        cases hdc : d == c <;> simp [setIdx, lookupIdx, hce, hee, hdc]
+  unfold lookupIdx setIdx
+  rw [Std.HashMap.getElem?_insert]
+  by_cases h : d = c
+  · subst h; simp
+  · have h' : ¬ c = d := fun e => h e.symm
+    simp [h, h']
 
 #check @lookupIdx_setIdx
 
@@ -453,10 +449,10 @@ theorem shrinkV_snoc_drop (c : Char) : ∀ win, Distinct win →
 /- ── the simulation: goFast tracks the same window as goV ── -/
 
 -- `seen` correctly records each char's last index in the consumed prefix
-def SeenOk (seen : List (Char × Nat)) (P : List Char) : Prop :=
+def SeenOk (seen : Store) (P : List Char) : Prop :=
   ∀ d, lookupIdx d seen = lastIdx d P
 
-theorem seenOk_step (seen : List (Char × Nat)) (P : List Char) (c : Char) (i : Nat)
+theorem seenOk_step (seen : Store) (P : List Char) (c : Char) (i : Nat)
     (hi : i = P.length) (h : SeenOk seen P) : SeenOk (setIdx c i seen) (P ++ [c]) := by
   intro d
   rw [lookupIdx_setIdx]
@@ -542,7 +538,7 @@ theorem goFast_eq_goV (rem : List Char) : ∀ P i start seen best,
 
 -- EQUIVALENCE: the fast last-seen-index solution equals the verified window
 theorem lengthOfLongest_eq (s : String) : lengthOfLongest s = lengthOfLongestV s := by
-  have := goFast_eq_goV s.toList [] 0 0 [] 0 rfl (Nat.zero_le _)
+  have := goFast_eq_goV s.toList [] 0 0 ∅ 0 rfl (Nat.zero_le _)
     (by simp [shrinkV]) (by intro d; simp [lookupIdx, lastIdx])
   simpa [lengthOfLongest, lengthOfLongestV, shrinkV] using this
 
@@ -556,3 +552,51 @@ theorem lengthOfLongest_optimal (s : String) :
   rw [lengthOfLongest_eq]; exact lengthOfLongestV_optimal s
 
 #print axioms lengthOfLongest_optimal
+
+/- ════════════════════════════════════════════════════════════════════════
+   COSMETIC: the same shipped algorithm, but in State-monad style — mirroring
+   the Haskell version's `State (Int, Map Char Int)`.  This is pure plumbing
+   (`get`/`set` instead of explicit accumulators); it changes nothing about the
+   algorithm or its complexity.  We prove it computes *exactly* `lengthOfLongest`
+   (`lengthOfLongestS_eq`), so it inherits optimality for free and stays
+   axiom-clean — the State monad buys no power, only syntax.
+-/
+
+-- threaded state: (window start, last-seen map, best length so far)
+abbrev LState := Nat × Store × Nat
+
+def stepS (c : Char) (i : Nat) : StateM LState Unit := do
+  let (start, seen, best) ← get
+  let start' := match lookupIdx c seen with
+                | some j => max start (j + 1)
+                | none   => start
+  set (start', setIdx c i seen, max best ((i + 1) - start'))
+
+def goFastS : List Char → Nat → StateM LState Unit
+  | [],      _ => pure ()
+  | c :: cs, i => do stepS c i; goFastS cs (i + 1)
+
+def lengthOfLongestS (s : String) : Nat :=
+  ((goFastS s.toList 0).run (0, ∅, 0)).2.2.2
+
+#guard lengthOfLongestS "abcabcbb" == 3
+#guard lengthOfLongestS "bbbbb" == 1
+#guard lengthOfLongestS "pwwkew" == 3
+
+-- the State plumbing threads exactly the explicit accumulators of `goFast`
+theorem goFastS_eq (rem : List Char) : ∀ i start seen best,
+    ((goFastS rem i).run (start, seen, best)).2.2.2 = goFast i start seen best rem := by
+  induction rem with
+  | nil => intro i start seen best; rfl
+  | cons c cs ih =>
+      intro i start seen best
+      simp only [goFastS, stepS, goFast, bind, get, getThe, MonadStateOf.get,
+                 MonadState.get, StateT.get, set, MonadStateOf.set, StateT.set,
+                 pure, StateT.pure, StateT.bind, StateT.run, Id.run]
+      exact ih (i + 1) _ _ _
+
+-- the State-monad solution equals the shipped solution (hence is optimal)
+theorem lengthOfLongestS_eq (s : String) : lengthOfLongestS s = lengthOfLongest s :=
+  goFastS_eq s.toList 0 0 ∅ 0
+
+#print axioms lengthOfLongestS_eq

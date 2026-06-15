@@ -23,6 +23,7 @@ open import Data.Sum using (_⊎_; inj₁; inj₂)
 open import Data.String using (String; toList)
 open import Relation.Nullary using (Dec; yes; no; ¬_)
 open import Data.Empty using (⊥; ⊥-elim)
+open import Data.Unit using (⊤; tt)   -- for the cosmetic State-monad mirror
 open import Relation.Binary.PropositionalEquality
   using (_≡_; refl; sym; trans; cong; cong₂; subst)
 
@@ -1028,3 +1029,68 @@ lengthOfLongest-optimal s =
   where
     R : Realized (toList s) (lengthOfLongestV s)
     R = window-realizable s
+
+------------------------------------------------------------------------
+-- COSMETIC: the same shipped algorithm in State-monad style, mirroring the
+-- Haskell version's `State (Int, Map Char Int)`.  We use a minimal State monad
+-- — literally Haskell's `newtype State s a = State (s → a × s)` unwrapped —
+-- rather than the stdlib's record-wrapped transformer, so the equivalence stays
+-- a clean structural induction.  Pure plumbing: proven equal to `lengthOfLongest`
+-- (hence optimal); the monad buys no power, only syntax.
+------------------------------------------------------------------------
+
+LSt : Set
+LSt = ℕ × List (Char × ℕ) × ℕ          -- (window start, last-seen map, best)
+
+St : Set → Set
+St A = LSt → A × LSt
+
+retˢ : ∀ {A} → A → St A
+retˢ a s = a , s
+
+infixl 1 _>>=ˢ_
+_>>=ˢ_ : ∀ {A B} → St A → (A → St B) → St B
+(m >>=ˢ k) s = let (a , s′) = m s in k a s′
+
+getˢ : St LSt
+getˢ s = s , s
+
+putˢ : LSt → St ⊤
+putˢ s′ _ = tt , s′
+
+execˢ : ∀ {A} → St A → LSt → LSt
+execˢ m s = proj₂ (m s)
+
+thd3 : LSt → ℕ
+thd3 (_ , _ , b) = b
+
+stepS : Char → ℕ → St ⊤
+stepS c i = getˢ >>=ˢ λ (start , seen , best) →
+  putˢ ( jump start (lookupIdx c seen)
+       , setIdx c i seen
+       , best ⊔ (suc i ∸ jump start (lookupIdx c seen)) )
+
+goFastS : List Char → ℕ → St ⊤
+goFastS []       _ = retˢ tt
+goFastS (c ∷ cs) i = stepS c i >>=ˢ λ _ → goFastS cs (suc i)
+
+lengthOfLongestS : String → ℕ
+lengthOfLongestS s = thd3 (execˢ (goFastS (toList s) 0) (0 , [] , 0))
+
+-- compile-time tests (same examples the other languages test)
+_ : lengthOfLongestS "abcabcbb" ≡ 3
+_ = refl
+_ : lengthOfLongestS "pwwkew" ≡ 3
+_ = refl
+
+-- the State plumbing threads exactly the explicit accumulators of `goFast`
+goFastS-eq : (rem : List Char) (i start best : ℕ) (seen : List (Char × ℕ)) →
+             thd3 (execˢ (goFastS rem i) (start , seen , best)) ≡ goFast i start seen best rem
+goFastS-eq []       i start best seen = refl
+goFastS-eq (c ∷ cs) i start best seen =
+  goFastS-eq cs (suc i) (jump start (lookupIdx c seen))
+             (best ⊔ (suc i ∸ jump start (lookupIdx c seen))) (setIdx c i seen)
+
+-- the State-monad solution equals the shipped solution (hence is optimal)
+lengthOfLongestS-eq : (s : String) → lengthOfLongestS s ≡ lengthOfLongest s
+lengthOfLongestS-eq s = goFastS-eq (toList s) 0 0 0 []

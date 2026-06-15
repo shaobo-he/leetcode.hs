@@ -2,6 +2,7 @@ module Main
 
 import Data.List   -- appendAssociative
 import Decidable.Equality
+import Control.Monad.State   -- for the cosmetic State-monad mirror at the end
 
 ------------------------------------------------------------------------
 -- LeetCode 3: Longest Substring Without Repeating Characters.
@@ -1320,3 +1321,50 @@ lengthOfLongestOptimal : (s : String) ->
   , (sub : List Char) -> Infix sub (unpack s) -> Distinct sub ->
       lteNat (length sub) (lengthOfLongest s) = True )
 lengthOfLongestOptimal s = rewrite lengthOfLongestEq s in lengthOfLongestVOptimal s
+
+------------------------------------------------------------------------
+-- COSMETIC: the same shipped algorithm in State-monad style, mirroring the
+-- Haskell version's `State (Int, Map Char Int)`.  Pure plumbing (`get`/`put`
+-- instead of explicit accumulators) -- it changes nothing about the algorithm
+-- or its complexity.  We prove it computes *exactly* `lengthOfLongest`, so it
+-- inherits optimality for free.  The State monad buys no power, only syntax.
+------------------------------------------------------------------------
+
+-- threaded state: (window start, last-seen assoc list, best length so far)
+LSt : Type
+LSt = (Nat, List (Char, Nat), Nat)
+
+total
+thd3 : LSt -> Nat
+thd3 (_, _, b) = b
+
+total
+stepS : Char -> Nat -> State LSt ()
+stepS c i = do
+  (start, seen, best) <- get
+  let start' = startJump start (lookupIdx c seen)
+  put (start', setIdx c i seen, maxN best (minus (S i) start'))
+
+total
+goFastS : List Char -> Nat -> State LSt ()
+goFastS []        _ = pure ()
+goFastS (c :: cs) i = do stepS c i; goFastS cs (S i)
+
+total
+lengthOfLongestS : String -> Nat
+lengthOfLongestS s = thd3 (execState (0, [], 0) (goFastS (unpack s) 0))
+
+-- the State plumbing threads exactly the explicit accumulators of `goFast`
+total
+goFastSEq : (rem : List Char) -> (i, start, best : Nat) -> (seen : List (Char, Nat)) ->
+            thd3 (execState (start, seen, best) (goFastS rem i))
+              = goFast i start seen best rem
+goFastSEq []        i start best seen = Refl
+goFastSEq (c :: cs) i start best seen =
+  goFastSEq cs (S i) (startJump start (lookupIdx c seen))
+    (maxN best (minus (S i) (startJump start (lookupIdx c seen)))) (setIdx c i seen)
+
+-- the State-monad solution equals the shipped solution (hence is optimal)
+total
+lengthOfLongestSEq : (s : String) -> lengthOfLongestS s = lengthOfLongest s
+lengthOfLongestSEq s = goFastSEq (unpack s) 0 0 0 []
