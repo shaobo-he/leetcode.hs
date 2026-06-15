@@ -4,13 +4,16 @@ module solution where
 -- Pre-order parenthesised encoding: (val child1 child2 ...).
 
 open import Data.Bool using (Bool; true; false; _∧_)
-open import Data.Nat using (ℕ; zero; suc; _∸_; _+_; _*_)
+open import Data.Nat using (ℕ; zero; suc; _∸_; _+_; _*_; _≤_; z≤n; s≤s)
+open import Data.Nat.Properties using (≤-refl; ≤-trans; +-monoʳ-≤; +-comm; m≤m+n)
 open import Data.Nat.Show renaming (show to showNat)
 open import Data.Char using (Char; isDigit; toℕ)
-open import Data.List using (List; []; _∷_)
+open import Data.List using (List; []; _∷_; length) renaming (_++_ to _++ᴸ_)
+open import Data.List.Properties using (++-assoc; ++-identityʳ)
+open import Data.Maybe using (Maybe; just; nothing)
 open import Data.String using (String; toList; fromList; _++_)
 open import Data.Product using (_×_; _,_; proj₁; proj₂)
-open import Relation.Binary.PropositionalEquality using (_≡_; refl)
+open import Relation.Binary.PropositionalEquality using (_≡_; refl; sym; cong; subst)
 
 data Tree : Set where
   node : ℕ → List Tree → Tree
@@ -69,4 +72,109 @@ _ : serialize t ≡ "(1(3(5)(6))(2)(4))"
 _ = refl
 
 _ : serialize (deserialize (serialize t)) ≡ serialize t
+_ = refl
+
+-- ════════════════════════════════════════════════════════════════════════
+-- ROUND-TRIP PROOF (verified total model).
+--
+-- `parseT (size t) (ser t) ≡ just (t , [])`, proved for the GRAMMAR: a total
+-- fuel-driven parser over a token stream with atomic `ℕ` values.  This is the
+-- substance of the round-trip — paren matching, child order, and "the parser
+-- returns exactly the remaining input".  The shipped parser above is
+-- {-# TERMINATING #-} and lexes decimal digits; here the parser is total
+-- (structural on the fuel) and the decimal lexer is abstracted as `val`.
+-- (no module wrapper: unique names `RTree`/`RForest`/`nd`/`deserialize₂` avoid
+-- clashing with the shipped `Tree`/`node`/`deserialize` in this same file.)
+
+mutual
+  data RTree : Set where
+    nd : ℕ → RForest → RTree
+  data RForest : Set where
+    fnil  : RForest
+    fcons : RTree → RForest → RForest
+
+data Tok : Set where
+  lp rp : Tok
+  val   : ℕ → Tok
+
+-- serialize: preorder, '(' value children ')'
+ser  : RTree → List Tok
+serF : RForest → List Tok
+ser (nd v cs)     = lp ∷ val v ∷ (serF cs ++ᴸ (rp ∷ []))
+serF fnil         = []
+serF (fcons t cs) = ser t ++ᴸ serF cs
+
+-- size measure, used as parse fuel
+size  : RTree → ℕ
+sizeF : RForest → ℕ
+size (nd _ cs)     = suc (sizeF cs)
+sizeF fnil         = 1
+sizeF (fcons t cs) = size t + sizeF cs
+
+size-pos : (t : RTree) → 1 ≤ size t
+size-pos (nd v cs) = s≤s z≤n
+
+sizeF-pos : (f : RForest) → 1 ≤ sizeF f
+sizeF-pos fnil         = s≤s z≤n
+sizeF-pos (fcons t cs) = ≤-trans (size-pos t) (m≤m+n (size t) (sizeF cs))
+
+-- arithmetic helpers (no `omega` here)
+≤-pred : ∀ {m n} → suc m ≤ suc n → m ≤ n
+≤-pred (s≤s p) = p
+
+bound-l : ∀ {a b n} → 1 ≤ b → a + b ≤ suc n → a ≤ n
+bound-l {a} {b} {n} 1≤b h =
+  ≤-pred (subst (λ x → x ≤ suc n) (+-comm a 1) (≤-trans (+-monoʳ-≤ a 1≤b) h))
+
+bound-r : ∀ {a b n} → 1 ≤ a → a + b ≤ suc n → b ≤ n
+bound-r {a} {b} {n} 1≤a h = bound-l 1≤a (subst (λ x → x ≤ suc n) (+-comm a b) h)
+
+-- total parser, structural on the fuel
+parseT : ℕ → List Tok → Maybe (RTree × List Tok)
+parseF : ℕ → List Tok → Maybe (RForest × List Tok)
+parseT (suc fuel) (lp ∷ val v ∷ rest) with parseF fuel rest
+... | just (cs , rest') = just (nd v cs , rest')
+... | nothing           = nothing
+parseT _ _ = nothing
+parseF (suc fuel) (rp ∷ rest) = just (fnil , rest)
+parseF (suc fuel) (lp ∷ ts) with parseT fuel (lp ∷ ts)
+... | just (t , rest1) with parseF fuel rest1
+...   | just (f , rest2) = just (fcons t f , rest2)
+...   | nothing          = nothing
+parseF (suc fuel) (lp ∷ ts) | nothing = nothing
+parseF _ _ = nothing
+
+-- the parser consumes exactly `ser t`, returning the untouched remainder
+parseT-ser : (t : RTree) (fuel : ℕ) (rest : List Tok)
+           → size t ≤ fuel → parseT fuel (ser t ++ᴸ rest) ≡ just (t , rest)
+parseF-ser : (f : RForest) (fuel : ℕ) (rest : List Tok)
+           → sizeF f ≤ fuel → parseF fuel (serF f ++ᴸ (rp ∷ rest)) ≡ just (f , rest)
+parseT-ser (nd v cs) zero rest ()
+parseT-ser (nd v cs) (suc fuel) rest (s≤s h)
+  rewrite ++-assoc (serF cs) (rp ∷ []) rest
+        | parseF-ser cs fuel rest h = refl
+parseF-ser fnil zero rest ()
+parseF-ser fnil (suc fuel) rest h = refl
+parseF-ser (fcons (nd v cs') cs) zero rest ()
+parseF-ser (fcons (nd v cs') cs) (suc fuel) rest h
+  rewrite ++-assoc (ser (nd v cs')) (serF cs) (rp ∷ rest)
+        | parseT-ser (nd v cs') fuel (serF cs ++ᴸ (rp ∷ rest)) (bound-l (sizeF-pos cs) h)
+        | parseF-ser cs fuel rest (bound-r (size-pos (nd v cs')) h) = refl
+
+-- payoff: parsing the serialization (with size-many fuel) recovers the tree
+roundtrip : (t : RTree) → parseT (size t) (ser t) ≡ just (t , [])
+roundtrip t = subst (λ z → parseT (size t) z ≡ just (t , []))
+                    (++-identityʳ (ser t)) (parseT-ser t (size t) [] ≤-refl)
+
+-- a self-fuelling deserialize, with a concrete computed round-trip
+deserialize₂ : List Tok → Maybe RTree
+deserialize₂ toks with parseT (length toks) toks
+... | just (t , _) = just t
+... | nothing      = nothing
+
+sample : RTree
+sample = nd 1 (fcons (nd 3 (fcons (nd 5 fnil) (fcons (nd 6 fnil) fnil)))
+              (fcons (nd 2 fnil) (fcons (nd 4 fnil) fnil)))
+
+_ : deserialize₂ (ser sample) ≡ just sample
 _ = refl

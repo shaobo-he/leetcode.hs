@@ -41,3 +41,146 @@ def t : Tree :=
 
 #guard serialize t == "(1(3(5)(6))(2)(4))"
 #guard serialize (deserialize (serialize t)) == serialize t
+
+/- ════════════════════════════════════════════════════════════════════════
+   ROUND-TRIP PROOF (verified total model).
+
+   `deserialize (serialize t) = t`, proved for the GRAMMAR: a total fuel-driven
+   parser over a token stream with atomic `Nat` values.  This is the substance of
+   the round-trip — paren matching, child order, and "the parser returns exactly
+   the remaining input" — where serializer bugs live.  The shipped parsers above
+   are `partial` (no equations to reason about) and lex decimal digits; here the
+   parser is total and the decimal lexer (Char ↔ Nat) is abstracted as the atomic
+   token `Tok.val`.  Mutual `Tree`/`Forest` mirrors the shipped `node : Int → List`.
+-/
+namespace Roundtrip
+
+mutual
+  inductive Tree where
+    | node : Nat → Forest → Tree
+  inductive Forest where
+    | nil  : Forest
+    | cons : Tree → Forest → Forest
+end
+
+inductive Tok where
+  | lp | rp | val : Nat → Tok
+deriving DecidableEq, Repr
+
+-- serialize: preorder, '(' value children ')'
+mutual
+  def ser : Tree → List Tok
+    | .node v cs => Tok.lp :: Tok.val v :: (serF cs ++ [Tok.rp])
+  def serF : Forest → List Tok
+    | .nil       => []
+    | .cons t cs => ser t ++ serF cs
+end
+
+-- a size measure, used as parse fuel
+mutual
+  def size : Tree → Nat
+    | .node _ cs => 1 + sizeF cs
+  def sizeF : Forest → Nat
+    | .nil       => 1
+    | .cons t cs => size t + sizeF cs
+end
+
+theorem size_pos (t : Tree) : 1 ≤ size t := by
+  cases t with | node v cs => simp only [size]; omega
+
+theorem sizeF_pos (f : Forest) : 1 ≤ sizeF f := by
+  cases f with
+  | nil => simp [sizeF]
+  | cons t cs => simp only [sizeF]; have := size_pos t; omega
+
+-- total parser, structural on the fuel
+mutual
+  def parseT : Nat → List Tok → Option (Tree × List Tok)
+    | fuel + 1, Tok.lp :: Tok.val v :: rest =>
+        match parseF fuel rest with
+        | some (cs, rest') => some (.node v cs, rest')
+        | none             => none
+    | _, _ => none
+  def parseF : Nat → List Tok → Option (Forest × List Tok)
+    | _ + 1, Tok.rp :: rest => some (.nil, rest)
+    | fuel + 1, toks@(Tok.lp :: _) =>
+        match parseT fuel toks with
+        | some (t, rest1) =>
+            match parseF fuel rest1 with
+            | some (f, rest2) => some (.cons t f, rest2)
+            | none            => none
+        | none => none
+    | _, _ => none
+end
+
+def deserialize (toks : List Tok) : Option Tree :=
+  (parseT toks.length toks).map Prod.fst
+
+-- the parser consumes exactly `serialize t`, returning the untouched remainder.
+-- Proved by mutual structural recursion on the tree / forest.
+mutual
+  theorem parseT_ser (t : Tree) (fuel : Nat) (rest : List Tok)
+      (h : size t ≤ fuel) : parseT fuel (ser t ++ rest) = some (t, rest) := by
+    cases t with
+    | node v cs =>
+      cases fuel with
+      | zero => simp only [size] at h; omega
+      | succ fuel =>
+        have hF : parseF fuel (serF cs ++ Tok.rp :: rest) = some (cs, rest) :=
+          parseF_ser cs fuel rest (by simp only [size] at h; omega)
+        simp only [ser, List.cons_append, List.append_assoc, List.nil_append,
+                   parseT, hF]
+
+  theorem parseF_ser (f : Forest) (fuel : Nat) (rest : List Tok)
+      (h : sizeF f ≤ fuel) : parseF fuel (serF f ++ Tok.rp :: rest) = some (f, rest) := by
+    cases f with
+    | nil =>
+      cases fuel with
+      | zero => simp only [sizeF] at h; omega
+      | succ fuel => simp only [serF, List.nil_append, parseF]
+    | cons t cs =>
+      cases fuel with
+      | zero => simp only [sizeF] at h; have := size_pos t; have := sizeF_pos cs; omega
+      | succ fuel =>
+        obtain ⟨tlt, hser⟩ : ∃ tlt, ser t = Tok.lp :: tlt := by
+          cases t with | node v cs' => exact ⟨_, rfl⟩
+        have hT : parseT fuel (ser t ++ (serF cs ++ Tok.rp :: rest))
+                    = some (t, serF cs ++ Tok.rp :: rest) :=
+          parseT_ser t fuel _ (by simp only [sizeF] at h; have := sizeF_pos cs; omega)
+        have hF : parseF fuel (serF cs ++ Tok.rp :: rest) = some (cs, rest) :=
+          parseF_ser cs fuel rest (by simp only [sizeF] at h; have := size_pos t; omega)
+        simp only [hser, List.cons_append] at hT
+        simp only [serF, List.append_assoc, hser, List.cons_append, parseF, hT, hF]
+end
+
+-- the serialization is long enough to supply its own parse fuel
+mutual
+  theorem size_le_len (t : Tree) : size t ≤ (ser t).length := by
+    cases t with
+    | node v cs =>
+      simp only [ser, size, List.length_cons, List.length_append]
+      have := sizeF_le_len cs; omega
+  theorem sizeF_le_len (f : Forest) : sizeF f ≤ (serF f).length + 1 := by
+    cases f with
+    | nil => simp only [serF, sizeF, List.length_nil]; omega
+    | cons t cs =>
+      simp only [serF, sizeF, List.length_append]
+      have := size_le_len t; have := sizeF_le_len cs; omega
+end
+
+-- payoff: deserialize undoes serialize, for EVERY tree
+theorem roundtrip (t : Tree) : deserialize (ser t) = some t := by
+  have h := parseT_ser t (ser t).length [] (size_le_len t)
+  simp only [List.append_nil] at h
+  simp only [deserialize, h, Option.map_some]
+
+#print axioms roundtrip
+
+-- concrete sanity check: the functions actually compute the round-trip
+def sample : Tree :=
+  .node 1 (.cons (.node 3 (.cons (.node 5 .nil) (.cons (.node 6 .nil) .nil)))
+          (.cons (.node 2 .nil) (.cons (.node 4 .nil) .nil)))
+
+example : deserialize (ser sample) = some sample := rfl
+
+end Roundtrip
