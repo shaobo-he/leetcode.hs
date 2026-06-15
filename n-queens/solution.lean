@@ -8,10 +8,28 @@ def selections : List α → List (α × List α)
   | []      => []
   | x :: xs => (x, xs) :: (selections xs).map (fun (y, ys) => (y, x :: ys))
 
--- All permutations of a list.
-partial def permute : List α → List (List α)
+-- every selection pairs a head with a strictly shorter remainder
+theorem selections_length {α} : (xs : List α) → (a : α) → (rest : List α) →
+    (a, rest) ∈ selections xs → rest.length < xs.length
+  | [], _, _, h => by simp [selections] at h
+  | x :: xs, a, rest, h => by
+    simp only [selections, List.mem_cons, List.mem_map, Prod.mk.injEq] at h
+    rcases h with ⟨_, hrx⟩ | ⟨⟨y, ys⟩, hp, _, hpr⟩
+    · subst hrx; simp only [List.length_cons]; omega
+    · subst hpr
+      have := selections_length xs y ys hp
+      simp only [List.length_cons]; omega
+
+-- All permutations of a list.  Total: each recursive call is on a strictly
+-- shorter remainder (`.attach` carries the membership proof to termination).
+def permute : List α → List (List α)
   | []  => [[]]
-  | xs  => (selections xs).flatMap (fun (x, rest) => (permute rest).map (x :: ·))
+  | x :: xs => (selections (x :: xs)).attach.flatMap
+      (fun s => (permute s.val.2).map (s.val.1 :: ·))
+  termination_by l => l.length
+  decreasing_by
+    simp_wf
+    exact selections_length _ _ _ s.property
 
 -- Two queens at (r1,c1) and (r2,c2) don't attack diagonally.
 def ok (p q : Int × Int) : Bool :=
