@@ -42,7 +42,7 @@ monad in N-Queens); everything else uses each toolchain's bundled libraries.
 | --- | --- |
 | [basic-calculator-iii](basic-calculator-iii) | Recursive-descent `+ - * /` with precedence and parens (HS: Parsec `chainl1`; RKT: `parser-tools` lexer; IDR: hand-rolled over `List Char`) |
 | [best-time-to-buy-and-sell-stock](best-time-to-buy-and-sell-stock) | Single pass tracking the lowest price so far |
-| [course-schedule](course-schedule) | DFS topological sort with cycle detection (Course Schedule II) |
+| [course-schedule](course-schedule) | DFS topological sort with cycle detection; Course Schedule II (HS: `StateT (Map …) Maybe` — State threads the visited map, the `Maybe` short-circuits on a cycle) |
 | [generate-parenthesis](generate-parenthesis) | Backtracking over the balanced-parenthesis grammar |
 | [length-of-longest-substring-k-distinct](length-of-longest-substring-k-distinct) | Sliding window with per-character counts |
 | [letter-combinations-of-a-phone-number](letter-combinations-of-a-phone-number) | Cartesian product of each digit's letter set |
@@ -53,7 +53,7 @@ monad in N-Queens); everything else uses each toolchain's bundled libraries.
 | [merge-sorted-array](merge-sorted-array) | Merge two sorted sequences (IDR: dependently-typed `Vect (m + n)` with a length proof) |
 | [merge-two-sorted-lists](merge-two-sorted-lists) | Natural structural-recursion merge |
 | [n-queens](n-queens) | Backtracking (HS: `Logic` monad; RKT/IDR: enumerate permutations, filter diagonal-safe) |
-| [number-of-islands](number-of-islands) | Flood-fill DFS (HS: mutable `IOArray`; RKT/IDR: functional sink / visited set) |
+| [number-of-islands](number-of-islands) | Flood-fill DFS (HS: pure `State (Set visited)` over an immutable `Array`; RKT/IDR: functional sink / visited set) |
 | [odd-even-list](odd-even-list) | Regroup by position parity (RKT: in-place pointer rewiring) |
 | [permutations](permutations) | Enumerate by picking each element as the head |
 | [permutations-ii](permutations-ii) | Multiset count-map enumeration to skip duplicates |
@@ -63,7 +63,7 @@ monad in N-Queens); everything else uses each toolchain's bundled libraries.
 | [spiral-matrix](spiral-matrix) | Peel the first row, rotate the rest, recurse |
 | [two-sum](two-sum) | Hash / assoc complement lookup |
 | [unique-letter-string](unique-letter-string) | Per-character contribution counting |
-| [valid-parentheses](valid-parentheses) | Stack matching (RKT: escape continuation; HS/IDR: explicit stack) |
+| [valid-parentheses](valid-parentheses) | Stack matching (RKT: escape continuation; HS: explicit stack + a continuation-monad mirror; IDR: explicit stack) |
 | [valid-sudoku](valid-sudoku) | Check every row, column, and 3×3 box for duplicates |
 
 ## Highlights
@@ -82,4 +82,5 @@ A few solutions lean into what each language does best:
 - **A fold invariant** — the interval merge is proved correct in both **Lean** (`merge-intervals.lean`) and **Idris** (`merge-intervals.idr`): `…NoOverlap` (every pair in the result is separated, `a.snd < b.fst`, as an inductive Pairwise over *all* pairs) and `…WF` (all outputs well-formed `lo ≤ hi`), via a separation invariant threaded through the coalescing `step`/fold — which holds for *any* well-formed input, so it needs no sortedness (the sort only fixes the output shape). Lean is axiom-clean and additionally verifies its insertion sort; the Idris port is `total` throughout, on `Nat` bounds so the comparisons reduce (no `omega` to lean on, so the `≤`/`<`/`max` lemmas are proved by hand).
 - **Greedy optimality** — `best-time-to-buy-and-sell-stock` (`.lean` and `.idr`) proves the single-pass max-profit is *exactly* the best trade: `maxProfit_optimal` (no buy-low-then-sell-high pair beats it) **and** `maxProfit_achievable` (the answer is realised by an actual trade), where `Trade prices b s` is the inductive "buy `b`, sell `s` no earlier". Lean uses `Int` + `omega` and is axiom-clean; the Idris port is `total` on `Nat` with monus profit, the `≤`/`min`/`max`/monus lemmas proved by hand.
 - **The Logic monad** — `n-queens.hs` does backtracking with `Control.Monad.Logic`; the Racket and Idris ports get the same answers by filtering permutations.
-- **Escape continuations** — `valid-parentheses.rkt` parses with `let/cc`, bailing out the moment it sees a mismatch.
+- **Escape continuations / the continuation monad** — `valid-parentheses` bails out the instant it sees a mismatch: `solution.rkt` with `let/cc`, and `solution.hs` mirrors that exact control flow in the **continuation monad** — `callCC \k -> … k False` *is* Racket's `(let/cc k … (k #f))` — sitting next to the plain explicit-stack version for contrast.
+- **State monad, beyond the sliding windows** — DFS that threads a visited map and short-circuits on a cycle is a textbook State fit: `course-schedule.hs` is `StateT (Map Int Int) Maybe` (State = the per-node status map, the `Maybe` = the cycle short-circuit via `lift Nothing`), replacing a hand-rolled `foldl` that threaded `(status, order)` through an explicit `Maybe` by hand. `number-of-islands.hs` makes the same move from the other direction — its flood-fill drops the mutable `IOArray` for an immutable `Array` (the read-only grid) plus a `State (Set (Int,Int))` of visited cells, so the "sink the cell" mutation becomes pure state. (`longest-substring-without-repeating-characters` likewise carries a `State`-monad mirror of its window.)
