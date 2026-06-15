@@ -59,7 +59,7 @@ monad in N-Queens); everything else uses each toolchain's bundled libraries.
 | [permutations-ii](permutations-ii) | Multiset count-map enumeration to skip duplicates |
 | [product-of-array-except-self](product-of-array-except-self) | Prefix- and suffix-product folds |
 | [regular-expression-matching](regular-expression-matching) | Brzozowski derivatives of regular expressions |
-| [serialize-deserialize-nary-tree](serialize-deserialize-nary-tree) | Pre-order parenthesised encoding + recursive-descent parse |
+| [serialize-deserialize-nary-tree](serialize-deserialize-nary-tree) | Pre-order parenthesised encoding + recursive-descent parse (HS: deserialize as a `State String` parser) |
 | [spiral-matrix](spiral-matrix) | Peel the first row, rotate the rest, recurse |
 | [two-sum](two-sum) | Hash / assoc complement lookup |
 | [unique-letter-string](unique-letter-string) | Per-character contribution counting |
