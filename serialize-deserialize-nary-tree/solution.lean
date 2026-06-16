@@ -23,31 +23,40 @@ def parseInt (cs : List Char) : Int × List Char :=
   let rest := cs.dropWhile isDigit'
   (String.toInt! (String.ofList ds), rest)
 
--- Recursive-descent parse.  Left `partial`: it recurses on parser-returned
--- suffixes (not structure), so a total version is a verified-parser proof — each
--- parser carrying a length bound on its remainder through its return type, with a
--- lexicographic (length, rank) measure.  The verified token-grammar round-trip
--- model below already proves this grammar invertible (`Roundtrip.roundtrip`);
--- totalising these Char-level parsers is future work.
-mutual
-  partial def parseTree : List Char → Tree × List Char
-    | '(' :: rest =>
-      let (v, rest1) := parseInt rest
-      let (cs, rest2) := parseChildren rest1
-      (Tree.node v cs, rest2)
-    | cs => (Tree.node 0 [], cs)
+-- parseInt's remainder (a `dropWhile`) is never longer than its input
+theorem parseInt_len (cs : List Char) : (parseInt cs).2.length ≤ cs.length := by
+  show (cs.dropWhile isDigit').length ≤ cs.length
+  induction cs with
+  | nil => simp
+  | cons c cs ih =>
+    simp only [List.dropWhile_cons]
+    split
+    · simp only [List.length_cons]; omega
+    · simp
 
-  partial def parseChildren : List Char → List Tree × List Char
-    | ')' :: rest => ([], rest)
-    | cs@('(' :: _) =>
-      let (t, rest1) := parseTree cs
-      let (ts, rest2) := parseChildren rest1
-      (t :: ts, rest2)
-    | cs => ([], cs)
-end
+-- Total recursive-descent parse: a single forest parser (a node is its own
+-- `( value children )`).  Its return type carries `remainder.length ≤ input`, so
+-- both recursive calls provably shrink the input — the first consumes a `(`, the
+-- second is bounded by the first call's carried proof.  No fuel, no `partial`.
+def parseForest : (input : List Char) →
+    List Tree × { r : List Char // r.length ≤ input.length }
+  | ')' :: rest => ([], ⟨rest, Nat.le_succ _⟩)
+  | '(' :: rest =>
+      let (children, rest2) := parseForest (parseInt rest).2
+      let (sibs, rest3)     := parseForest rest2.val
+      (Tree.node (parseInt rest).1 children :: sibs,
+        ⟨rest3.val,
+          Nat.le_trans rest3.property
+            (Nat.le_trans rest2.property
+              (Nat.le_trans (parseInt_len rest) (Nat.le_succ _)))⟩)
+  | cs => ([], ⟨cs, Nat.le_refl _⟩)
+  termination_by input => input.length
+  decreasing_by
+    · simp_wf; have := parseInt_len rest; omega
+    · simp_wf; have := parseInt_len rest; have := rest2.property; omega
 
 def deserialize (s : String) : Tree :=
-  (parseTree s.toList).fst
+  (parseForest s.toList).1.headD (Tree.node 0 [])
 
 def t : Tree :=
   Tree.node 1 [Tree.node 3 [Tree.node 5 [], Tree.node 6 []], Tree.node 2 [], Tree.node 4 []]
