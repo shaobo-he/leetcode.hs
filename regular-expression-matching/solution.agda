@@ -46,11 +46,9 @@ matchRE cs r = nullable (foldl (λ acc c → deriv c acc) r cs)
 atom : Char → RE
 atom c = if c == '.' then dot else chr c
 
--- The parser is not structurally recursive on its argument (the two-character
--- case 'c ∷ * ∷ rest' recurses on rest, the one-character case recurses on the
--- tail), so we mark it TERMINATING (it does terminate: every clause shrinks the
--- list). This mirrors the `partial def parse` in Lean / total-but-covering Idris.
-{-# TERMINATING #-}
+-- Structurally recursive: both clauses recurse on `rest`, a (sub-)subterm of
+-- the input (the '*' clause peels two constructors, the other peels one), so
+-- Agda accepts it as total with no pragma.
 parse : List Char → RE
 parse []                = eps
 parse (c ∷ '*' ∷ rest)  = seq (star (atom c)) (parse rest)
