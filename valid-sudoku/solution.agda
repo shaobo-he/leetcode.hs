@@ -3,12 +3,15 @@ module solution where
 -- LeetCode 36: Valid Sudoku
 -- Rows, columns, and 3x3 boxes must have no duplicate non-'.' digits.
 
-open import Data.Nat using (ℕ)
+open import Data.Nat using (ℕ; suc; _<_)
+open import Data.Nat.Properties using (≤-refl)
+open import Data.Nat.Induction using (<-wellFounded)
+open import Induction.WellFounded using (Acc; acc)
 open import Data.Bool using (Bool; true; false; not; _∧_; _∨_)
 open import Data.Char using (Char; _==_)
 open import Data.String using (String; toList)
 open import Data.List using (List; []; _∷_; _++_; map; concat; concatMap;
-                             filterᵇ; all; mapMaybe)
+                             filterᵇ; all; mapMaybe; length)
 open import Data.Maybe using (Maybe; just; nothing)
 open import Relation.Binary.PropositionalEquality using (_≡_; refl)
 
@@ -24,26 +27,29 @@ tailᴸ : List A → List A
 tailᴸ []       = []
 tailᴸ (_ ∷ xs) = xs
 
--- stdlib has no List transpose for a rectangular list of lists.
-{-# TERMINATING #-}
+-- stdlib has no List transpose for a rectangular list of lists.  Total by
+-- well-founded recursion on the first row's length: each step drops one column
+-- (`map tailᴸ`), so that length strictly decreases until a row empties.
+firstRow : List (List A) → List A
+firstRow []      = []
+firstRow (r ∷ _) = r
+
 transpose : List (List A) → List (List A)
-transpose []       = []
-transpose ([] ∷ _) = []
-transpose rows     = mapMaybe headᵐ rows ∷ transpose (map tailᴸ rows)
+transpose rows = go rows (<-wellFounded (length (firstRow rows)))
+  where
+    go : (rs : List (List A)) → Acc _<_ (length (firstRow rs)) → List (List A)
+    go []             _         = []
+    go ([] ∷ _)       _         = []
+    go ((x ∷ r) ∷ rs) (acc rec) =
+      mapMaybe headᵐ ((x ∷ r) ∷ rs) ∷ go (map tailᴸ ((x ∷ r) ∷ rs)) (rec ≤-refl)
 
--- chunks of 3 (non-structural: splits off a fixed prefix).
-take3 : List A → List A
-take3 (a ∷ b ∷ c ∷ _) = a ∷ b ∷ c ∷ []
-take3 xs              = xs
-
-drop3 : List A → List A
-drop3 (_ ∷ _ ∷ _ ∷ xs) = xs
-drop3 _                = []
-
-{-# TERMINATING #-}
+-- chunks of 3, structurally recursive: matching three deep makes the recursive
+-- call land on the tail `rest`, a genuine sub-term (no TERMINATING needed).
 chunks3 : List A → List (List A)
-chunks3 []       = []
-chunks3 (x ∷ xs) = take3 (x ∷ xs) ∷ chunks3 (drop3 (x ∷ xs))
+chunks3 []                 = []
+chunks3 (a ∷ [])           = (a ∷ []) ∷ []
+chunks3 (a ∷ b ∷ [])       = (a ∷ b ∷ []) ∷ []
+chunks3 (a ∷ b ∷ c ∷ rest) = (a ∷ b ∷ c ∷ []) ∷ chunks3 rest
 
 -- no duplicate non-'.' digits, using Bool char equality.
 contains : Char → List Char → Bool
