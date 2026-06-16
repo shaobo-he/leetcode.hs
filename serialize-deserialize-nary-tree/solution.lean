@@ -70,10 +70,10 @@ def t : Tree :=
    `deserialize (serialize t) = t`, proved for the GRAMMAR: a total fuel-driven
    parser over a token stream with atomic `Nat` values.  This is the substance of
    the round-trip — paren matching, child order, and "the parser returns exactly
-   the remaining input" — where serializer bugs live.  The shipped parsers above
-   are `partial` (no equations to reason about) and lex decimal digits; here the
-   parser is total and the decimal lexer (Char ↔ Nat) is abstracted as the atomic
-   token `Tok.val`.  Mutual `Tree`/`Forest` mirrors the shipped `node : Int → List`.
+   the remaining input" — where serializer bugs live.  The shipped `parseForest`
+   above lexes decimal digits and carries a remainder-length bound; here the
+   parser is fuel-driven and the decimal lexer (Char ↔ Nat) is abstracted as the
+   atomic token `Tok.val`.  Mutual `Tree`/`Forest` mirrors the shipped `node`.
 -/
 namespace Roundtrip
 
