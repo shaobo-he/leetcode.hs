@@ -17,6 +17,10 @@ def succsOf (node : Int) (g : List (Int × List Int)) : List Int :=
   | none         => []
 
 -- DFS with status map (1 = on stack, 2 = finished); none signals a cycle.
+-- Left `partial`: the recursion explores arbitrary graph successors (not
+-- structure), so a total version is a verified-DFS proof — a finite "unvisited
+-- nodes" measure over the graph's node set, with the status map's monotonicity
+-- carried through the return type.  Future work.
 partial def visit (g : List (Int × List Int))
     (acc : Option (List (Int × Int) × List Int)) (node : Int) :
     Option (List (Int × Int) × List Int) :=

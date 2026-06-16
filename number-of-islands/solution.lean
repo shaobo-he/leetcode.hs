@@ -24,7 +24,11 @@ def posEq (a b : Int × Int) : Bool := a.1 == b.1 && a.2 == b.2
 def memPos (p : Int × Int) (xs : List (Int × Int)) : Bool :=
   xs.any (posEq p)
 
--- flood fill: add every connected land cell to the visited set
+-- flood fill: add every connected land cell to the visited set.
+-- Left `partial`: the recursion follows arbitrary neighbours (not structure), so
+-- a total version is a verified-DFS proof — a finite "unvisited cells" measure
+-- over the grid, with flood's monotonicity (`visited` only grows) carried through
+-- its return type, plus a `cellAt = '1' → pos ∈ cells` lemma.  Future work.
 partial def flood (grid : Grid) (pos : Int × Int)
     (visited : List (Int × Int)) : List (Int × Int) :=
   if cellAt grid pos.1 pos.2 != '1' || memPos pos visited then

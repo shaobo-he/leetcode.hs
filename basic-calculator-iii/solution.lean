@@ -20,6 +20,12 @@ def parseNumber (cs : List Char) : Int × List Char :=
     | []        => (acc, [])
   go 0 cs
 
+-- Recursive-descent expr/term/factor.  Left `partial`: parseExpr→parseTerm→
+-- parseFactor recurse on the *same* input and only shrink it when parseFactor
+-- consumes a '(' before recursing into parseExpr, so a total version is a
+-- verified-parser proof — each parser carrying a length bound on its remainder
+-- through its return type, with a lexicographic (length, rank) measure.  Future
+-- work.
 mutual
   partial def parseExpr (cs : List Char) : Int × List Char :=
     let (t, rest) := parseTerm cs

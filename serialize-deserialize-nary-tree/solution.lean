@@ -5,8 +5,15 @@ inductive Tree where
 deriving Inhabited
 
 -- Pre-order parenthesised encoding: (val child1 child2 ...).
-partial def serialize : Tree → String
-  | Tree.node v cs => "(" ++ toString v ++ String.join (cs.map serialize) ++ ")"
+-- Total via a structural helper over the child list (Lean's termination checker
+-- can't see `cs.map serialize` as decreasing).
+mutual
+  def serialize : Tree → String
+    | Tree.node v cs => "(" ++ toString v ++ serializeForest cs ++ ")"
+  def serializeForest : List Tree → String
+    | []      => ""
+    | c :: cs => serialize c ++ serializeForest cs
+end
 
 def isDigit' (c : Char) : Bool := c ≥ '0' && c ≤ '9'
 
@@ -16,6 +23,12 @@ def parseInt (cs : List Char) : Int × List Char :=
   let rest := cs.dropWhile isDigit'
   (String.toInt! (String.ofList ds), rest)
 
+-- Recursive-descent parse.  Left `partial`: it recurses on parser-returned
+-- suffixes (not structure), so a total version is a verified-parser proof — each
+-- parser carrying a length bound on its remainder through its return type, with a
+-- lexicographic (length, rank) measure.  The verified token-grammar round-trip
+-- model below already proves this grammar invertible (`Roundtrip.roundtrip`);
+-- totalising these Char-level parsers is future work.
 mutual
   partial def parseTree : List Char → Tree × List Char
     | '(' :: rest =>
@@ -33,7 +46,7 @@ mutual
     | cs => ([], cs)
 end
 
-partial def deserialize (s : String) : Tree :=
+def deserialize (s : String) : Tree :=
   (parseTree s.toList).fst
 
 def t : Tree :=
