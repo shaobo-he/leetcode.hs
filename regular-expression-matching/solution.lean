@@ -38,10 +38,13 @@ def matchRE (s : String) (r : RE) : Bool :=
 def atom (c : Char) : RE :=
   if c == '.' then dot else chr c
 
-partial def parse : List Char → RE
+-- structural: every recursive call is on a proper suffix of the input
+def parse : List Char → RE
   | []             => eps
   | c :: '*' :: rest => seq (star (atom c)) (parse rest)
   | c :: rest      => seq (atom c) (parse rest)
+  termination_by l => l.length
+  decreasing_by all_goals simp_wf; all_goals omega
 
 def isMatch (s p : String) : Bool :=
   matchRE s (parse p.toList)
