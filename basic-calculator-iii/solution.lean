@@ -3,7 +3,7 @@
 
 def isDigit' (c : Char) : Bool := c >= '0' && c <= '9'
 
-partial def dropSpaces : List Char → List Char
+def dropSpaces : List Char → List Char
   | ' ' :: cs => dropSpaces cs
   | cs        => cs
 
@@ -14,7 +14,7 @@ def tdiv (a b : Int) : Int :=
 
 def charToDigit (c : Char) : Int := Int.ofNat (c.toNat - '0'.toNat)
 
-partial def parseNumber (cs : List Char) : Int × List Char :=
+def parseNumber (cs : List Char) : Int × List Char :=
   let rec go (acc : Int) : List Char → Int × List Char
     | c :: rest => if isDigit' c then go (acc * 10 + charToDigit c) rest else (acc, c :: rest)
     | []        => (acc, [])
