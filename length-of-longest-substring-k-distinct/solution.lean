@@ -20,7 +20,8 @@ def decr (x : Char) : List (Char × Nat) → List (Char × Nat)
          | _     => rest)
       else (y, n) :: decr x rest
 
-partial def shrinkW (k : Nat) (win : List Char) (counts : List (Char × Nat)) :
+-- structural on `win` (recurses on its tail)
+def shrinkW (k : Nat) (win : List Char) (counts : List (Char × Nat)) :
     List Char × List (Char × Nat) :=
   if counts.length > k then
     match win with
@@ -28,7 +29,8 @@ partial def shrinkW (k : Nat) (win : List Char) (counts : List (Char × Nat)) :
     | []      => (win, counts)
   else (win, counts)
 
-partial def goW (k : Nat) (win : List Char) (counts : List (Char × Nat))
+-- structural on the input list (recurses on its tail)
+def goW (k : Nat) (win : List Char) (counts : List (Char × Nat))
     (best : Nat) : List Char → Nat
   | []      => best
   | c :: cs =>
