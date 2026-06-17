@@ -24,8 +24,8 @@ open import Data.Product.Relation.Binary.Lex.Strict using (×-Lex; ×-wellFounde
 open import Data.Nat.Induction using (<-wellFounded)
 open import Data.Bool using (Bool; true; false; if_then_else_)
 open import Data.Sum using (_⊎_; inj₁; inj₂)
-open import Data.List using (List; []; _∷_; map; foldl; upTo; concatMap; length; _++_)
-open import Data.List.Membership.Propositional using (_∈_)
+open import Data.List using (List; []; _∷_; foldl; upTo; concatMap; length; _++_)
+open import Data.List.Membership.Propositional using (_∈_; mapWith∈)
 open import Data.List.Membership.Propositional.Properties using (∈-++⁺ˡ; ∈-++⁺ʳ)
 open import Data.List.Relation.Unary.Any using (here; there)
 open import Data.Product using (_×_; _,_; proj₁; proj₂; Σ; Σ-syntax)
@@ -207,8 +207,7 @@ mutual
 -- ─── driver ───
 
 attach : ∀ {A : Set} (xs : List A) → List (Σ[ a ∈ A ] (a ∈ xs))
-attach []       = []
-attach (x ∷ xs) = (x , here refl) ∷ map (λ p → proj₁ p , there (proj₂ p)) (attach xs)
+attach xs = mapWith∈ xs (λ {x} m → x , m)
 
 foldStep : (g : Graph) (nodes : List ℕ) → State → Σ[ x ∈ ℕ ] (x ∈ nodes) → State
 foldStep g nodes nothing             _        = nothing

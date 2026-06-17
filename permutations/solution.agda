@@ -1,6 +1,6 @@
 module solution where
 
-open import Data.Nat using (ℕ; suc; _<_; s≤s)
+open import Data.Nat using (ℕ; _<_; s≤s)
 open import Data.Nat.Properties using (≤-refl)
 open import Data.Nat.Induction using (<-wellFounded)
 open import Induction.WellFounded using (Acc; acc)

@@ -5,7 +5,7 @@ module solution where
 
 open import Data.Bool using (Bool; true; false; _∧_)
 open import Data.Nat using (ℕ; zero; suc; _∸_; _+_; _*_; _≤_; _<_; z≤n; s≤s)
-open import Data.Nat.Properties using (≤-refl; ≤-trans; n≤1+n; +-monoʳ-≤; +-comm; m≤m+n)
+open import Data.Nat.Properties using (≤-refl; ≤-trans; ≤-pred; n≤1+n; +-monoʳ-≤; +-comm; m≤m+n)
 open import Data.Nat.Induction using (<-wellFounded)
 open import Induction.WellFounded using (Acc; acc)
 open import Data.Nat.Show renaming (show to showNat)
@@ -15,7 +15,7 @@ open import Data.List.Properties using (++-assoc; ++-identityʳ)
 open import Data.Maybe using (Maybe; just; nothing)
 open import Data.String using (String; toList; fromList; _++_)
 open import Data.Product using (_×_; _,_; proj₁; proj₂; Σ; Σ-syntax)
-open import Relation.Binary.PropositionalEquality using (_≡_; refl; sym; cong; subst)
+open import Relation.Binary.PropositionalEquality using (_≡_; refl; subst)
 
 data Tree : Set where
   node : ℕ → List Tree → Tree
@@ -145,10 +145,7 @@ sizeF-pos : (f : RForest) → 1 ≤ sizeF f
 sizeF-pos fnil         = s≤s z≤n
 sizeF-pos (fcons t cs) = ≤-trans (size-pos t) (m≤m+n (size t) (sizeF cs))
 
--- arithmetic helpers (no `omega` here)
-≤-pred : ∀ {m n} → suc m ≤ suc n → m ≤ n
-≤-pred (s≤s p) = p
-
+-- arithmetic helpers (no `omega` here); ≤-pred comes from Data.Nat.Properties
 bound-l : ∀ {a b n} → 1 ≤ b → a + b ≤ suc n → a ≤ n
 bound-l {a} {b} {n} 1≤b h =
   ≤-pred (subst (λ x → x ≤ suc n) (+-comm a 1) (≤-trans (+-monoʳ-≤ a 1≤b) h))

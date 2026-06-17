@@ -6,7 +6,7 @@ open import Data.Nat.Properties using
 open import Data.Nat.Induction using (<-wellFounded)
 open import Induction.WellFounded using (Acc; acc)
 open import Data.List using (List; []; _∷_; map; concatMap; foldl; all; length)
-open import Data.List.Membership.Propositional using (_∈_)
+open import Data.List.Membership.Propositional using (_∈_; mapWith∈)
 open import Data.List.Relation.Unary.Any using (here; there)
 open import Data.Product using (_×_; _,_; proj₁; proj₂; Σ; Σ-syntax)
 open import Data.Bool using (Bool; true; false; if_then_else_)
@@ -52,8 +52,7 @@ totalCount-lt x k ((y , m) ∷ cs) (there mem) with y ≡ᵇ x
 
 -- pair every element with its membership proof (the Agda analogue of Lean `.attach`)
 attach : ∀ {A : Set} (xs : List A) → List (Σ[ a ∈ A ] (a ∈ xs))
-attach []       = []
-attach (x ∷ xs) = (x , here refl) ∷ map (λ p → proj₁ p , there (proj₂ p)) (attach xs)
+attach xs = mapWith∈ xs (λ {x} m → x , m)
 
 -- Pick each distinct value with a positive count as the next element, recurse.
 -- TOTAL by well-founded recursion on `totalCount`: decrementing a present,

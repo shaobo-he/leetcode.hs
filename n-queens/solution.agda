@@ -5,7 +5,7 @@ module solution where
 -- of [1..n] (columns are then automatically distinct) and keep the diagonal-safe
 -- ones, counting how many survive.
 
-open import Data.Nat using (ℕ; zero; suc; _∸_; _+_; _<_; _≡ᵇ_; s≤s)
+open import Data.Nat using (ℕ; suc; _∸_; _+_; _<_; _≡ᵇ_; s≤s)
 open import Data.Nat.Properties using (≤-refl)
 open import Data.Nat.Induction using (<-wellFounded)
 open import Induction.WellFounded using (Acc; acc)
