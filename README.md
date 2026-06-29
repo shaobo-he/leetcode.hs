@@ -42,17 +42,22 @@ monad in N-Queens); everything else uses each toolchain's bundled libraries.
 | --- | --- |
 | [basic-calculator-iii](basic-calculator-iii) | Recursive-descent `+ - * /` with precedence and parens (HS: Parsec `chainl1`; RKT: `parser-tools` lexer; IDR: hand-rolled over `List Char`) |
 | [best-time-to-buy-and-sell-stock](best-time-to-buy-and-sell-stock) | Single pass tracking the lowest price so far |
+| [coin-change](coin-change) | Fewest coins summing to an amount. Racket/Haskell ship the bottom-up DP table; Lean proves a well-founded top-down recurrence (`termination_by`/`decreasing_by`) optimal against a declarative `Rep` spec — soundness, lower bound, and none-iff-no-representation — via min-over-list argmin/monotone fold lemmas and a head-decomposition lemma. Idris: total structural DP; Agda: total via `Acc`/`<-wellFounded` with refl tests |
 | [course-schedule](course-schedule) | DFS topological sort with cycle detection; Course Schedule II (HS: `StateT (Map …) Maybe` — State threads the visited map, the `Maybe` short-circuits on a cycle) |
+| [find-peak-element](find-peak-element) | Binary search for a peak justified by a search *invariant*, not sortedness. Lean: total well-founded search on window size `hi-lo`, `search.induct` proves the result is a genuine peak (`PeakAt` with boundary disjunctions) on adjacent-distinct input; subtype-packaged `findPeak` + free `exists_peak` corollary; axiom-clean. Idris/Agda: total binary search by well-founded recursion (`Accessible`/`<-wellFounded`). Racket/Haskell: runnable search + peak checker |
 | [generate-parenthesis](generate-parenthesis) | Backtracking over the balanced-parenthesis grammar |
+| [implement-trie-prefix-tree](implement-trie-prefix-tree) | Trie (prefix tree) as a functional assoc-list-children `Trie`; `insert`/`search`/`startsWith` recurse structurally on the key, `build = foldr insert empty`. Lean proves the operations *refine* the list-of-words spec via an abstraction function: `search w (build ws) = decide (w ∈ ws)` and `startsWith p (build ws) = (decide (p=[]) ‖ ws.any (isPrefix p))` (empty-prefix guard mandatory) — double-structural inductions with assoc-list lookup hit/miss lemmas, axiom-clean. Small inductive alphabet `Sym` for decidable equality; Idris/Agda total (mutual `insert`/`childInsert`, no pragmas) |
 | [length-of-longest-substring-k-distinct](length-of-longest-substring-k-distinct) | Sliding window with per-character counts |
 | [letter-combinations-of-a-phone-number](letter-combinations-of-a-phone-number) | Cartesian product of each digit's letter set |
 | [longest-substring-without-repeating-characters](longest-substring-without-repeating-characters) | Sliding window over last-seen indices (HS: `State` monad) |
+| [majority-element](majority-element) | Boyer–Moore voting fold; Lean proves the count invariant by snoc-induction → candidate-is-majority, the majority *iff*, and majority-uniqueness (axiom-clean); runnable folds + tests in Racket/Haskell/Idris (total)/Agda (total foldl) |
 | [maximum-subarray](maximum-subarray) | Kadane's algorithm as a fold |
 | [merge-intervals](merge-intervals) | Sort by start, fold-coalescing overlaps |
 | [merge-k-sorted-lists](merge-k-sorted-lists) | Divide-and-conquer pairwise merge |
 | [merge-sorted-array](merge-sorted-array) | Merge two sorted sequences (IDR: dependently-typed `Vect (m + n)` with a length proof) |
 | [merge-two-sorted-lists](merge-two-sorted-lists) | Natural structural-recursion merge |
 | [n-queens](n-queens) | Backtracking (HS: `Logic` monad; RKT/IDR: enumerate permutations, filter diagonal-safe) |
+| [next-permutation](next-permutation) | Functional recast of in-place next-permutation: `findPivot` splits `pre ++ p :: suf` at the rightmost ascent, `swapLast` swaps in the rightmost element `> p`, then reverse the suffix. Lean proves the result is a `List.Perm` of the input and strictly greater in `List.Lex (· < ·)` when a pivot exists (betweenness left as noted future work); Idris/Agda total with the split-recovery & `p < g` lemmas |
 | [number-of-islands](number-of-islands) | Flood-fill DFS (HS: pure `State (Set visited)` over an immutable `Array`; RKT/IDR: functional sink / visited set) |
 | [odd-even-list](odd-even-list) | Regroup by position parity (RKT: in-place pointer rewiring) |
 | [permutations](permutations) | Enumerate by picking each element as the head |
